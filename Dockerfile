@@ -11,5 +11,5 @@ RUN npm install
 # Bundle app source
 COPY . /usr/src/app
 
-EXPOSE 9005
+EXPOSE 9101
 CMD [ "node", "app.js" ]
