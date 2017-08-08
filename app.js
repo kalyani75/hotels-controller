@@ -12,8 +12,8 @@ var async = require("async");
 
 var crypto = require('crypto');
 var locationqueryoptions = {
-  host: 'http://locationquery-service',
-  port: 9002,
+  host: process.env.LOCATIONQUERYHOST || 'http://locationquery-service',
+  port: process.env.LOCATIONQUERYPORT || 9011,
   path: '/hotels.com/api/v1.0/locations',
   headers: {
     'Content-Type': 'application/json'
@@ -21,8 +21,8 @@ var locationqueryoptions = {
 };
 
 var hotelqueryoptions = {
-  host: 'http://hotelquery-service',
-  port: 9003,
+  host: process.env.HOTELQUERYHOST || 'http://hotelquery-service',
+  port: process.env.HOTELQUERYPORT || 9012,
   path: '/hotels.com/api/v1.0/hotels',
   headers: {
     'Content-Type': 'application/json'
@@ -30,8 +30,8 @@ var hotelqueryoptions = {
 };
 
 var dealqueryoptions = {
-  host: 'http://dealsquery-service',
-  port: 9004,
+  host: process.env.DEALQUERYHOST || 'http://dealsquery-service',
+  port: process.env.DEALQUERYPORT || 9013,
   path: '/hotels.com/api/v1.0/deals',
   headers: {
     'Content-Type': 'application/json'
@@ -92,27 +92,31 @@ app.get('/hotels.com/controller/v1.0/hotels/autocomplete/:searchtext', cors(), f
   });
 });
 
-var getsessionid = function(sessioncallback) {
+var getsessionid = function() {
   var sha = crypto.createHash('sha256');
   sha.update(Math.random().toString());
   
-  return sessioncallback(null, sha.digest('hex'));
+  return sha.digest('hex');
 }
 
-var getalldeals = function(hotels, dealcallback) {
-  var deals = [];
+var getalldeals = function(sessionid, dealcallback) {
+  var deals = [];  
 	var reqoptions = {
-	  url: dealqueryoptions.host + ':' + dealqueryoptions.port + dealqueryoptions.path + '/alldeals/101',
+	  url: dealqueryoptions.host + ':' + dealqueryoptions.port + dealqueryoptions.path + '/dealsbyhotel',
 	  method: 'GET',
-	  headers: dealqueryoptions.headers
+	  headers: dealqueryoptions.headers,
+    qs: {
+      'sessionid': sessionid
+	  }    
   };
-  
+
   request(reqoptions, function (dealserror, dealsresponse, dealsbody) {
     dealsJSON = JSON.parse(dealsbody);
-    for (var ilp = 0; ilp < dealsJSON.deals.length; ilp ++)
-      deals.push(JSON.parse(dealsJSON.deals[ilp]));
-      
-    return dealcallback(null, deals);
+
+    /*for (var ilp = 0; ilp < dealsJSON.deals.length; ilp ++)
+      deals.push(dealsJSON.deals[ilp]);*/
+    
+    return dealcallback(null, dealsJSON);
   });
 }
 
@@ -127,11 +131,13 @@ app.get('/hotels.com/controller/v1.0/hotels/search/:latitude/:longitude', cors()
   radius = parseInt(controllerrequest.query.radius);
   if (!radius) pagelength = 5;
 
+  sessionid = getsessionid();
   var reqoptions = {
 	  url: hotelqueryoptions.host + ':' + hotelqueryoptions.port + hotelqueryoptions.path + '/search/' + latitude + '/' + longitude,
 	  method: 'GET',
 	  headers: hotelqueryoptions.headers,
 	  qs: {
+      'sessionid': sessionid,
 	    'radius': radius
 	  }
   };
@@ -141,20 +147,21 @@ app.get('/hotels.com/controller/v1.0/hotels/search/:latitude/:longitude', cors()
       hotelsJSON = JSON.parse(hotelbody);
       hotels = _.propertyOf(hotelsJSON)('hotelsearch');
 
+      var modifiedhotelsJSON = {};
+      modifiedhotelsJSON.sessionid = sessionid;
+
       async.parallel({
-        sessionid: getsessionid.bind(null),
-        alldeals: getalldeals.bind(null, hotels)
+        alldeals: getalldeals.bind(null, sessionid)
       }, function(fullhotelinfoerror, fullhotelinforesults) {
-        var modifiedhotelsJSON = {};
-        modifiedhotelsJSON.sessionid = fullhotelinforesults.sessionid;
-        
         var modifiedhotels = [];
         for (var i = 0; i < hotels.length; i ++)
         {
           var modifiedhotel = {};
           modifiedhotel = hotels[i];
-          
-          modifiedhotel.deals = fullhotelinforesults.alldeals;
+
+          hotelid = String(hotels[i].id)
+          if (hotelid in fullhotelinforesults.alldeals) modifiedhotel.deals = _.propertyOf(fullhotelinforesults.alldeals)(hotelid);
+
           modifiedhotels.push(modifiedhotel);
         }
 
