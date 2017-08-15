@@ -11,6 +11,35 @@ var cors = require('cors')
 var async = require("async");
 
 var crypto = require('crypto');
+
+const zipkin = require('zipkin');
+const wrapRequest = require('zipkin-instrumentation-request');
+const { HttpLogger } = require('zipkin-transport-http');
+const CLSContext = require('zipkin-context-cls');
+ 
+const ctxImpl = new CLSContext('zipkin');
+const recorder = new zipkin.BatchRecorder({
+  logger: new HttpLogger({
+    endpoint: 'http://' + (process.env.ZIPKINHOST || zipkin) + ':' + (process.env.ZIPKINPORT || 9411) +'/api/v1/spans'
+  })
+});
+const tracer = new zipkin.Tracer({
+  recorder: recorder,
+  ctxImpl: ctxImpl,
+  sampler: new zipkin.sampler.CountingSampler(process.env.ZIPKINSAMPLINGRATE || 1)
+});
+
+const serviceName = 'hotels.com';
+const remoteServiceName = 'hotels.com:internalserives';
+
+const zipkinMiddleware = require('zipkin-instrumentation-express').expressMiddleware;
+const zipkinRequest = wrapRequest(request, { tracer, serviceName, remoteServiceName });
+
+app.use(zipkinMiddleware({
+  tracer,
+  serviceName: 'hotels.com' 
+}));
+ 
 var locationqueryoptions = {
   host: process.env.LOCATIONQUERYHOST || 'http://locationquery-service',
   port: process.env.LOCATIONQUERYPORT || 9011,
@@ -55,7 +84,7 @@ app.get('/hotels.com/controller/v1.0/locations/autocomplete/:searchtext', cors()
 	  }
   };
 
-  request(reqoptions, function (locationerror, locationresponse, locationbody) {
+  zipkinRequest(reqoptions, function (locationerror, locationresponse, locationbody) {
 	  if (!locationerror && locationresponse.statusCode == 200) {
       controllerresponse.json(JSON.parse(locationbody));
     }
@@ -82,7 +111,7 @@ app.get('/hotels.com/controller/v1.0/hotels/autocomplete/:searchtext', cors(), f
 	  }
   };
 
-  request(reqoptions, function (hotelerror, hotelresponse, hotelbody) {
+  zipkinRequest(reqoptions, function (hotelerror, hotelresponse, hotelbody) {
 	  if (!hotelerror && hotelresponse.statusCode == 200) {
       controllerresponse.json(JSON.parse(hotelbody));
     }
@@ -110,18 +139,14 @@ var getalldeals = function(sessionid, dealcallback) {
 	  }    
   };
 
-  request(reqoptions, function (dealserror, dealsresponse, dealsbody) {
+  zipkinRequest(reqoptions, function (dealserror, dealsresponse, dealsbody) {
     dealsJSON = JSON.parse(dealsbody);
-
-    /*for (var ilp = 0; ilp < dealsJSON.deals.length; ilp ++)
-      deals.push(dealsJSON.deals[ilp]);*/
-    
     return dealcallback(null, dealsJSON);
   });
 }
 
 app.get('/hotels.com/controller/v1.0/hotels/search/:latitude/:longitude', cors(), function(controllerrequest, controllerresponse)
-{
+{ 
   latitude = parseFloat(controllerrequest.params.latitude);
   if (!latitude) controllerresponse.status(400).end();
 
@@ -135,14 +160,14 @@ app.get('/hotels.com/controller/v1.0/hotels/search/:latitude/:longitude', cors()
   var reqoptions = {
 	  url: hotelqueryoptions.host + ':' + hotelqueryoptions.port + hotelqueryoptions.path + '/search/' + latitude + '/' + longitude,
 	  method: 'GET',
-	  headers: hotelqueryoptions.headers,
+	  headers: hotelqueryoptions.headers,  
 	  qs: {
       'sessionid': sessionid,
 	    'radius': radius
 	  }
   };
 
-  request(reqoptions, function (hotelerror, hotelresponse, hotelbody) {
+  zipkinRequest(reqoptions, function (hotelerror, hotelresponse, hotelbody) {
 	  if (!hotelerror && hotelresponse.statusCode == 200) {
       hotelsJSON = JSON.parse(hotelbody);
       hotels = _.propertyOf(hotelsJSON)('hotelsearch');
