@@ -26,7 +26,7 @@ const recorder = new zipkin.BatchRecorder({
 const tracer = new zipkin.Tracer({
   recorder: recorder,
   ctxImpl: ctxImpl,
-  sampler: new zipkin.sampler.CountingSampler(process.env.ZIPKINSAMPLINGRATE || 1)
+  sampler: new zipkin.sampler.CountingSampler(process.env.ZIPKINSAMPLERATE || 1)
 });
 
 const serviceName = 'hotels.com';
