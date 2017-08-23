@@ -16,7 +16,8 @@
     "zipkin-instrumentation-request": "*",
     "zipkin-instrumentation-express": "*",
     "zipkin-context-cls": "*",
-    "zipkin-transport-http": "*"
+    "zipkin-transport-http": "*",
+    "redis": "*"
   },
   "devDependencies": {},
   "repository": {},
